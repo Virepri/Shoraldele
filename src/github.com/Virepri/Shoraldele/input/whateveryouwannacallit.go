@@ -7,7 +7,10 @@ import (
 	gv "github.com/Virepri/Shoraldele/GlobalVars"
 	"github.com/Virepri/Shoraldele/Buffer"
 	"github.com/Virepri/Shoraldele/Codes"
+	"github.com/Virepri/Shoraldele/Display"
+	"github.com/Virepri/Shoraldele/FileIO"
 	"reflect"
+	//"fmt"
 )
 
 //http://stackoverflow.com/questions/14426366/what-is-an-idiomatic-way-of-representing-enums-in-go
@@ -54,6 +57,7 @@ func changeMode (new_mode ModeType) {
 		return
 	} else {
 		CurrentMode = new_mode
+		gv.MString = []string{"Command","Insert","Select"}[int(CurrentMode)]
 		// TODO: This should probably dispatch threads so that someone adding a chan but not listening does not block
 		for _, chn := range ModeChangeNotifiers {
 			chn <- new_mode
@@ -70,7 +74,17 @@ func handleKey (keycode tm.ScanCode) {
 	case CurrentMode == Insert:
 		if s(keycode, codes.ESC) {
 			changeMode(Command)
+		} else if s(keycode, codes.BACKSP) || s(keycode, codes.DEL){
+			//fmt.Println(string(buffer.GetBufferContents(0,-1)))
+			buffer.Delete(buffer.GetCursorPosition(),0)
+			if !(buffer.GetCursorPosition() - 1 < 0) {
+				buffer.SetCursorPosition(buffer.GetCursorPosition() - 1)
+			}
+		} else if s(keycode, codes.ENTER) {
+			buffer.SetCursorPosition(buffer.GetCursorPosition() + 1)
+			buffer.Insert(buffer.GetCursorPosition(), "\n")
 		} else {
+			buffer.SetCursorPosition(buffer.GetCursorPosition() + 1)
 			buffer.Overwrite(int(buffer.GetCursorPosition()),string(keycode.Rune()))
 		}
 	case s(keycode, codes.Ci): //i
@@ -82,27 +96,31 @@ func handleKey (keycode tm.ScanCode) {
 		changeMode(Insert)
 	case s(keycode, codes.Cs): //s
 		changeMode(Select)
-    selection.start, selection.end = buffer.GetCursorPosition(), buffer.GetCursorPosition()
+		selection.start, selection.end = buffer.GetCursorPosition(), buffer.GetCursorPosition()
 		HasSelection = true
 	//case s(keycode, codes.Cc): //c
 	//	changeMode(Command)
 
-
+	case s(keycode, codes.Cq): //q
+		gv.WaitGroup.Done()
+		display.StopDisplay()
+	case s(keycode, codes.Cw):
+		FileIO.Write()
 	case s(keycode, codes.ESC):
 		changeMode(Command)
 		selection.start, selection.end = 0,0
 		HasSelection = false
-  case s(keycode, codes.LEFT):
+	case s(keycode, codes.LEFT):
 		if buffer.GetCursorPosition() > 0 {
 			buffer.SetCursorPosition(buffer.GetCursorPosition() + 1)
-      if CurrentMode == Select {
+			if CurrentMode == Select {
 				selection.start--
 			}
 		}
 	case s(keycode, codes.RIGHT):
 		if buffer.GetCursorPosition() < buffer.GetBufferSize() {
 			buffer.SetCursorPosition(buffer.GetCursorPosition() - 1)
-      if CurrentMode == Select {
+			if CurrentMode == Select {
 				selection.end++
 			}
 		}
@@ -111,12 +129,12 @@ func handleKey (keycode tm.ScanCode) {
 		if line > 0 {
 			prevline := lines[line - 1]
 			buffer.SetCursorPosition(prevline[0] + min(prevline[1], char))
-      if CurrentMode == Select {
-			selection.start = prevline[0] + min(prevline[1], char)
-		  }
+			if CurrentMode == Select {
+				selection.start = prevline[0] + min(prevline[1], char)
+			}
 		}
 	}
-}	
+}
 
 func min (a, b int) int {
 	if (a < b) {
@@ -125,7 +143,6 @@ func min (a, b int) int {
 		return b
 	}
 }
-		
 
 func s (a tm.ScanCode, b tm.ScanCode) bool {
 	return reflect.DeepEqual(a, b)
